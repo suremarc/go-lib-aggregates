@@ -140,7 +140,7 @@ func main() {
 
 	t.Go(func() error { return parseLoop(ctx, "wss://nasdaqfeed.polygon.io/stocks", "T.*", trades) })
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 8; i++ {
 		t.Go(func() error {
 			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
 		})

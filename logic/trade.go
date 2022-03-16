@@ -24,9 +24,9 @@ func ProcessTrade[Txn any, Trade Aggregable](store db.DB[Txn], logic UpdateLogic
 	newAggregate := logic(aggregate, trade)
 	updated := newAggregate == aggregate
 
-	store.Set(&tx, ticker, ts, aggregate)
+	store.Set(&tx, ticker, ts, newAggregate)
 
-	return aggregate, updated
+	return newAggregate, updated
 }
 
 func parseTimestampFromInt64(x int64) ptime.INanoseconds {
