@@ -1,8 +1,6 @@
 package logic
 
 import (
-	"time"
-
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/ptime"
 	"github.com/suremarc/go-lib-aggregates/db"
@@ -28,10 +26,6 @@ func ProcessTrade[Txn any, Trade Aggregable](store db.DB[Txn], logic UpdateLogic
 	store.Set(&tx, trade.GetTicker(), ts, aggregate)
 
 	return aggregate, updated
-}
-
-func truncateTimestamp(ts ptime.IMilliseconds) ptime.IMilliseconds {
-	return ptime.IMillisecondsFromDuration(ts.ToDuration().Truncate(time.Minute))
 }
 
 func parseTimestampFromInt64(x int64) ptime.INanoseconds {

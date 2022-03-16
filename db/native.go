@@ -13,7 +13,7 @@ type index struct {
 	timestamp ptime.IMilliseconds
 }
 
-func truncateTimestamp(ts ptime.IMilliseconds) ptime.IMilliseconds {
+func snapTimestamp(ts ptime.INanoseconds) ptime.IMilliseconds {
 	return ptime.IMillisecondsFromDuration(ts.ToDuration().Truncate(time.Minute))
 }
 
@@ -33,7 +33,7 @@ func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds) glo
 
 	index := index{
 		ticker:    ticker,
-		timestamp: truncateTimestamp(timestamp.ToIMilliseconds()),
+		timestamp: snapTimestamp(timestamp),
 	}
 
 	val, _ := n.data.LoadOrStore(index, globals.Aggregate{
@@ -49,7 +49,7 @@ func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, agg
 
 	index := index{
 		ticker:    ticker,
-		timestamp: truncateTimestamp(timestamp.ToIMilliseconds()),
+		timestamp: snapTimestamp(timestamp),
 	}
 
 	n.data.Store(index, aggregate)
@@ -60,7 +60,7 @@ func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds) 
 
 	index := index{
 		ticker:    ticker,
-		timestamp: truncateTimestamp(timestamp.ToIMilliseconds()),
+		timestamp: snapTimestamp(timestamp),
 	}
 
 	n.data.Delete(index)
