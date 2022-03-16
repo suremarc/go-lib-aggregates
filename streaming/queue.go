@@ -14,7 +14,6 @@ func isAggregateReady(aggregate globals.Aggregate) bool {
 
 type aggregateQueue struct {
 	unpublished sync.Map
-	lock        sync.RWMutex
 }
 
 type index struct {
@@ -23,9 +22,6 @@ type index struct {
 }
 
 func (a *aggregateQueue) enqueue(aggregate globals.Aggregate) {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
-
 	a.unpublished.Store(index{
 		ticker:    aggregate.Ticker,
 		timestamp: aggregate.StartTimestamp,
@@ -33,7 +29,6 @@ func (a *aggregateQueue) enqueue(aggregate globals.Aggregate) {
 }
 
 func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate) bool) {
-	a.lock.Lock()
 	a.unpublished.Range(func(key, value any) bool {
 		aggregate := value.(globals.Aggregate)
 		if shouldDelete := f(aggregate); shouldDelete {
@@ -42,5 +37,4 @@ func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate) bool) {
 
 		return true
 	})
-	a.lock.Unlock()
 }
