@@ -17,7 +17,7 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
+func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -33,7 +33,7 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue,
 	}
 }
 
-func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan stocks.Trade, output chan<- globals.Aggregate) error {
+func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan stocks.Trade) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -106,14 +106,12 @@ func main() {
 	t, ctx := tomb.WithContext(context.Background())
 
 	trades := make(chan stocks.Trade, 1000)
-	aggregates := make(chan globals.Aggregate, 1000)
 
-	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
-	t.Go(func() error { return displayLoop(ctx, aggregates) })
+	t.Go(func() error { return parseLoop(ctx, "wss://nasdaqfeed.polygon.io/stocks", "T.*", trades) })
 
 	for i := 0; i < 8; i++ {
 		t.Go(func() error {
-			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades, aggregates)
+			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
 		})
 	}
 
