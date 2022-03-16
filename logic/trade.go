@@ -13,7 +13,7 @@ func ProcessTrade[Txn any](store db.DB[Txn], trade currencies.Trade) (globals.Ag
 	var tx Txn
 	defer store.Commit(&tx)
 
-	ts := trade.ExchangeTimestamp
+	ts := ptime.IMilliseconds(trade.ExchangeTimestamp).ToINanoseconds()
 
 	aggregate := store.Get(&tx, trade.Pair, ts)
 	updated := UpdateAggregate(&aggregate, trade)
