@@ -46,14 +46,7 @@ func UpdateAggregate(aggregate *globals.Aggregate, trade currencies.Trade) bool 
 		aggregate.Low = trade.Price
 	}
 
-	if aggregate.StartTimestamp == 0 {
-		aggregate.StartTimestamp = truncateTimestamp(trade.ExchangeTimestamp.ToIMilliseconds())
-		aggregate.EndTimestamp = truncateTimestamp(trade.ExchangeTimestamp.ToIMilliseconds() + ptime.IMillisecondsFromDuration(time.Minute))
-	}
-
 	aggregate.Volume += trade.OrderSize
-
-	aggregate.Ticker = trade.Pair
 
 	return updated
 }
