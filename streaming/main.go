@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/polygon-io/go-lib-models/v2/currencies"
 	"github.com/polygon-io/go-lib-models/v2/globals"
-	"github.com/polygon-io/ptime"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/suremarc/go-lib-aggregates/db"
@@ -17,17 +15,16 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-func isAggregateReady(aggregate globals.Aggregate) bool {
-	return aggregate.EndTimestamp < ptime.IMillisecondsFromTime(time.Now())
-}
-
-func workerLoop(ctx context.Context, store *db.NativeDB, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
+func workerLoop(ctx context.Context, store *db.NativeDB, queue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			logic.ProcessTrade[db.Txn](store, trade)
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, trade)
+			if updated {
+				queue.enqueue(aggregate)
+			}
 		}
 	}
 }
@@ -62,7 +59,6 @@ func parseLoop(ctx context.Context, output chan<- currencies.Trade) error {
 	for {
 		var trades []currencies.Trade
 		if err := c.ReadJSON(&trades); err != nil {
-			logrus.Error(err)
 			return err
 		}
 
@@ -85,25 +81,33 @@ func displayLoop(ctx context.Context, input <-chan globals.Aggregate) error {
 
 func main() {
 	store := db.NewNativeDB()
+	var queue aggregateQueue
 
 	t, ctx := tomb.WithContext(context.Background())
 
 	trades := make(chan currencies.Trade, 1000)
 	aggregates := make(chan globals.Aggregate, 1000)
 
-	logrus.Info(1)
-
 	t.Go(func() error { return parseLoop(ctx, trades) })
 	t.Go(func() error { return displayLoop(ctx, aggregates) })
 
 	for i := 0; i < 8; i++ {
-		t.Go(func() error { return workerLoop(ctx, store, trades, aggregates) })
+		t.Go(func() error { return workerLoop(ctx, store, &queue, trades, aggregates) })
 	}
 
 	c := cron.New()
 	c.AddFunc("* * * * *", func() {
-		store.Sweep(func(aggregate globals.Aggregate) {
-			fmt.Println(aggregate)
+		queue.sweepAndClear(func(aggregate globals.Aggregate) {
+			fmt.Printf(
+				"%s %s - open: $%.2f, close: $%.2f, high: $%.2f, low: $%.2f, volume: %f\n",
+				aggregate.Ticker,
+				aggregate.StartTimestamp.ToTime().Format("15:04:05"),
+				aggregate.Open,
+				aggregate.Close,
+				aggregate.High,
+				aggregate.Low,
+				aggregate.Volume,
+			)
 		})
 	})
 	c.Start()

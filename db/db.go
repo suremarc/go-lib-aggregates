@@ -9,7 +9,5 @@ type DB[Txn any] interface {
 	Get(tx *Txn, ticker string, timestamp ptime.INanoseconds) globals.Aggregate
 	Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, aggregate globals.Aggregate)
 
-	Sweep(func(globals.Aggregate))
-
-	Free(tx *Txn)
+	Commit(tx *Txn)
 }

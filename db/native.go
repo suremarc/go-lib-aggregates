@@ -21,7 +21,6 @@ type NativeDB struct {
 	lockManager lockManager
 	globalLock  sync.Mutex
 
-	// data map[index]globals.Aggregate
 	data sync.Map
 }
 
@@ -54,14 +53,7 @@ func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, agg
 	n.data.Store(index, aggregate)
 }
 
-func (n *NativeDB) Sweep(f func(globals.Aggregate)) {
-	n.data.Range(func(key, value any) bool {
-		f(value.(globals.Aggregate))
-		return true
-	})
-}
-
-func (n *NativeDB) Free(tx *Txn) {
+func (n *NativeDB) Commit(tx *Txn) {
 	tx.lock.Unlock()
 	*tx = Txn{}
 }
