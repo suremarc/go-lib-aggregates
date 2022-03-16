@@ -22,7 +22,7 @@ func workerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQ
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, trade)
+			aggregate, updated := logic.ProcessTrade[db.Txn, *currencies.Trade](store, logic.CurrenciesLogic, &trade)
 			if updated {
 				publishQueue.enqueue(aggregate)
 			}

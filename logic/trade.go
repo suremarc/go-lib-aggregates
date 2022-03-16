@@ -3,54 +3,41 @@ package logic
 import (
 	"time"
 
-	"github.com/polygon-io/go-lib-models/v2/currencies"
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/ptime"
 	"github.com/suremarc/go-lib-aggregates/db"
 )
 
-func ProcessTrade[Txn any](store db.DB[Txn], trade currencies.Trade) (globals.Aggregate, bool) {
+type Aggregable interface {
+	GetTicker() string
+	GetTimestamp() int64
+}
+
+type UpdateLogic[Trade any] func(globals.Aggregate, Trade) globals.Aggregate
+
+func ProcessTrade[Txn any, Trade Aggregable](store db.DB[Txn], logic UpdateLogic[Trade], trade Trade) (globals.Aggregate, bool) {
 	var tx Txn
 	defer store.Commit(&tx)
 
-	ts := ptime.IMilliseconds(trade.ExchangeTimestamp).ToINanoseconds()
+	ts := parseTimestampFromInt64(trade.GetTimestamp())
 
-	aggregate := store.Get(&tx, trade.Pair, ts)
-	updated := UpdateAggregate(&aggregate, trade)
+	aggregate := store.Get(&tx, trade.GetTicker(), ts)
+	newAggregate := logic(aggregate, trade)
+	updated := newAggregate == aggregate
 
-	store.Set(&tx, trade.Pair, ts, aggregate)
+	store.Set(&tx, trade.GetTicker(), ts, aggregate)
 
 	return aggregate, updated
 }
 
-func UpdateAggregate(aggregate *globals.Aggregate, trade currencies.Trade) bool {
-	var updated bool
-
-	if aggregate.Open == 0 {
-		updated = true
-		aggregate.Open = trade.Price
-	}
-
-	if aggregate.Close == 0 {
-		updated = true
-		aggregate.Close = trade.Price
-	}
-
-	if trade.Price > aggregate.High {
-		updated = true
-		aggregate.High = trade.Price
-	}
-
-	if trade.Price < aggregate.Low || aggregate.Low == 0 {
-		updated = true
-		aggregate.Low = trade.Price
-	}
-
-	aggregate.Volume += trade.OrderSize
-
-	return updated
-}
-
 func truncateTimestamp(ts ptime.IMilliseconds) ptime.IMilliseconds {
 	return ptime.IMillisecondsFromDuration(ts.ToDuration().Truncate(time.Minute))
+}
+
+func parseTimestampFromInt64(x int64) ptime.INanoseconds {
+	if x < 9999999999999 {
+		return ptime.IMilliseconds(x).ToINanoseconds()
+	}
+
+	return ptime.INanoseconds(x)
 }
