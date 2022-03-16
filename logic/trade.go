@@ -22,7 +22,7 @@ func ProcessTrade[Txn any, Trade Aggregable](store db.DB[Txn], logic UpdateLogic
 
 	aggregate := store.Get(&tx, ticker, ts)
 	newAggregate := logic(aggregate, trade)
-	updated := newAggregate == aggregate
+	updated := newAggregate != aggregate
 
 	store.Set(&tx, ticker, ts, newAggregate)
 
