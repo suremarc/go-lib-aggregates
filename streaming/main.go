@@ -60,8 +60,8 @@ func writeAndRead(c *websocket.Conn, msg string) error {
 	return nil
 }
 
-func parseLoop[Trade any](ctx context.Context, output chan<- Trade) error {
-	c, _, err := websocket.DefaultDialer.DialContext(ctx, "wss://socket.polygon.io/crypto", nil)
+func parseLoop[Trade any](ctx context.Context, url, subscribe string, output chan<- Trade) error {
+	c, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func parseLoop[Trade any](ctx context.Context, output chan<- Trade) error {
 	logrus.Info(string(msg))
 
 	writeAndRead(c, fmt.Sprintf(`{"action":"auth","params":"%s"}`, os.Getenv("API_KEY")))
-	writeAndRead(c, fmt.Sprintf(`{"action":"subscribe","params":"%s"}`, "XT.*"))
+	writeAndRead(c, fmt.Sprintf(`{"action":"subscribe","params":"%s"}`, subscribe))
 
 	for {
 		var trades []Trade
@@ -108,7 +108,7 @@ func main() {
 	trades := make(chan stocks.Trade, 1000)
 	aggregates := make(chan globals.Aggregate, 1000)
 
-	t.Go(func() error { return parseLoop(ctx, trades) })
+	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
 	t.Go(func() error { return displayLoop(ctx, aggregates) })
 
 	for i := 0; i < 8; i++ {
