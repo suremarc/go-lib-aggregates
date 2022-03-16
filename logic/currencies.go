@@ -5,6 +5,8 @@ import (
 	"github.com/polygon-io/go-lib-models/v2/globals"
 )
 
+var _ UpdateLogic[*currencies.Trade] = CurrenciesLogic
+
 func CurrenciesLogic(aggregate globals.Aggregate, trade *currencies.Trade) globals.Aggregate {
 	if aggregate.Open == 0 {
 		aggregate.Open = trade.Price
@@ -22,7 +24,11 @@ func CurrenciesLogic(aggregate globals.Aggregate, trade *currencies.Trade) globa
 		aggregate.Low = trade.Price
 	}
 
+	aggregate.VWAP *= aggregate.Volume
 	aggregate.Volume += trade.OrderSize
+	aggregate.VWAP += trade.Price
+	aggregate.VWAP /= aggregate.Volume
+
 	aggregate.Transactions++
 
 	return aggregate

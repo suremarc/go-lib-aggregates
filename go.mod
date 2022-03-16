@@ -16,6 +16,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/mailru/easyjson v0.7.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/polygon-io/go-lib-core-constants v1.0.3 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	go.uber.org/zap v1.13.0 // indirect
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect

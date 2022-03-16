@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/polygon-io/go-lib-models/v2/currencies"
 	"github.com/polygon-io/go-lib-models/v2/globals"
+	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/suremarc/go-lib-aggregates/db"
@@ -16,13 +17,29 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-func workerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
+func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			aggregate, updated := logic.ProcessTrade[db.Txn, *currencies.Trade](store, logic.CurrenciesLogic, &trade)
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.CurrenciesLogic, &trade)
+			if updated {
+				publishQueue.enqueue(aggregate)
+			}
+
+			evictionQueue.enqueue(aggregate)
+		}
+	}
+}
+
+func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan stocks.Trade, output chan<- globals.Aggregate) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case trade := <-input:
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, &trade)
 			if updated {
 				publishQueue.enqueue(aggregate)
 			}
@@ -43,7 +60,7 @@ func writeAndRead(c *websocket.Conn, msg string) error {
 	return nil
 }
 
-func parseLoop(ctx context.Context, output chan<- currencies.Trade) error {
+func parseLoop[Trade any](ctx context.Context, output chan<- Trade) error {
 	c, _, err := websocket.DefaultDialer.DialContext(ctx, "wss://socket.polygon.io/crypto", nil)
 	if err != nil {
 		return err
@@ -60,7 +77,7 @@ func parseLoop(ctx context.Context, output chan<- currencies.Trade) error {
 	writeAndRead(c, fmt.Sprintf(`{"action":"subscribe","params":"%s"}`, "XT.*"))
 
 	for {
-		var trades []currencies.Trade
+		var trades []Trade
 		if err := c.ReadJSON(&trades); err != nil {
 			return err
 		}
@@ -88,14 +105,16 @@ func main() {
 
 	t, ctx := tomb.WithContext(context.Background())
 
-	trades := make(chan currencies.Trade, 1000)
+	trades := make(chan stocks.Trade, 1000)
 	aggregates := make(chan globals.Aggregate, 1000)
 
 	t.Go(func() error { return parseLoop(ctx, trades) })
 	t.Go(func() error { return displayLoop(ctx, aggregates) })
 
 	for i := 0; i < 8; i++ {
-		t.Go(func() error { return workerLoop(ctx, store, &publishQueue, &evictionQueue, trades, aggregates) })
+		t.Go(func() error {
+			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades, aggregates)
+		})
 	}
 
 	c := cron.New(cron.WithSeconds())
