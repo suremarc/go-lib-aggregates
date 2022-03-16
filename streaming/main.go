@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/polygon-io/go-lib-models/v2/currencies"
@@ -15,7 +16,7 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-func workerLoop(ctx context.Context, store *db.NativeDB, queue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
+func workerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade, output chan<- globals.Aggregate) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -23,8 +24,10 @@ func workerLoop(ctx context.Context, store *db.NativeDB, queue *aggregateQueue, 
 		case trade := <-input:
 			aggregate, updated := logic.ProcessTrade[db.Txn](store, trade)
 			if updated {
-				queue.enqueue(aggregate)
+				publishQueue.enqueue(aggregate)
 			}
+
+			evictionQueue.enqueue(aggregate)
 		}
 	}
 }
@@ -81,7 +84,7 @@ func displayLoop(ctx context.Context, input <-chan globals.Aggregate) error {
 
 func main() {
 	store := db.NewNativeDB()
-	var queue aggregateQueue
+	var publishQueue, evictionQueue aggregateQueue
 
 	t, ctx := tomb.WithContext(context.Background())
 
@@ -92,12 +95,16 @@ func main() {
 	t.Go(func() error { return displayLoop(ctx, aggregates) })
 
 	for i := 0; i < 8; i++ {
-		t.Go(func() error { return workerLoop(ctx, store, &queue, trades, aggregates) })
+		t.Go(func() error { return workerLoop(ctx, store, &publishQueue, &evictionQueue, trades, aggregates) })
 	}
 
-	c := cron.New()
-	c.AddFunc("* * * * *", func() {
-		queue.sweepAndClear(func(aggregate globals.Aggregate) {
+	c := cron.New(cron.WithSeconds())
+	c.AddFunc("* * * * * *", func() {
+		publishQueue.sweepAndClear(func(aggregate globals.Aggregate) bool {
+			if !isAggregateReady(aggregate) {
+				return false
+			}
+
 			fmt.Printf(
 				"%s %s - open: $%.2f, close: $%.2f, high: $%.2f, low: $%.2f, volume: %f\n",
 				aggregate.Ticker,
@@ -108,6 +115,13 @@ func main() {
 				aggregate.Low,
 				aggregate.Volume,
 			)
+
+			return true
+		})
+	})
+	c.AddFunc("0 * * * * *", func() {
+		evictionQueue.sweepAndClear(func(aggregate globals.Aggregate) bool {
+			return time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
 		})
 	})
 	c.Start()

@@ -32,14 +32,14 @@ func (a *aggregateQueue) enqueue(aggregate globals.Aggregate) {
 	}, aggregate)
 }
 
-func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate)) {
+func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate) bool) {
 	a.lock.Lock()
 	a.unpublished.Range(func(key, value any) bool {
 		aggregate := value.(globals.Aggregate)
-		if isAggregateReady(aggregate) {
-			f(aggregate)
+		if shouldDelete := f(aggregate); shouldDelete {
 			a.unpublished.Delete(key)
 		}
+
 		return true
 	})
 	a.lock.Unlock()
