@@ -19,9 +19,7 @@ func truncateTimestamp(ts ptime.IMilliseconds) ptime.IMilliseconds {
 
 type NativeDB struct {
 	lockManager lockManager
-	globalLock  sync.Mutex
-
-	data sync.Map
+	data        sync.Map
 }
 
 var _ DB[Txn] = &NativeDB{}
@@ -53,6 +51,17 @@ func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, agg
 	n.data.Store(index, aggregate)
 }
 
+func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds) {
+	n.maybeAcquireLock(tx, ticker)
+
+	index := index{
+		ticker:    ticker,
+		timestamp: truncateTimestamp(timestamp.ToIMilliseconds()),
+	}
+
+	n.data.Delete(index)
+}
+
 func (n *NativeDB) Commit(tx *Txn) {
 	tx.lock.Unlock()
 	*tx = Txn{}
@@ -61,7 +70,7 @@ func (n *NativeDB) Commit(tx *Txn) {
 func (h *NativeDB) maybeAcquireLock(tx *Txn, ticker string) {
 	if tx.Empty() {
 		tx.ticker = ticker
-		tx.lock = h.lockManager.Acquire(ticker)
+		tx.lock = h.lockManager.acquire(ticker)
 	} else if tx.ticker != ticker {
 		panic("cannot acquire lock on multiple tickers")
 	}
@@ -80,7 +89,7 @@ type lockManager struct {
 	locks sync.Map
 }
 
-func (l *lockManager) Acquire(ticker string) *sync.Mutex {
+func (l *lockManager) acquire(ticker string) *sync.Mutex {
 	v, _ := l.locks.LoadOrStore(ticker, &sync.Mutex{})
 	lock := v.(*sync.Mutex)
 	lock.Lock()
