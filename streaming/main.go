@@ -121,7 +121,13 @@ func main() {
 	})
 	c.AddFunc("0 * * * * *", func() {
 		evictionQueue.sweepAndClear(func(aggregate globals.Aggregate) bool {
-			return time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
+			shouldDelete := time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
+			if shouldDelete {
+				var tx db.Txn
+				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds())
+			}
+
+			return shouldDelete
 		})
 	})
 	c.Start()
