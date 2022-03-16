@@ -138,7 +138,7 @@ func main() {
 
 	trades := make(chan websocketTrade, 1000)
 
-	t.Go(func() error { return parseLoop(ctx, "wss://nasdaqfeed.polygon.io/stocks", "T.*", trades) })
+	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
 
 	for i := 0; i < 8; i++ {
 		t.Go(func() error {
