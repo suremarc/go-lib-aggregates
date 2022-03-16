@@ -17,6 +17,35 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
+type websocketTrade struct {
+	EventType      string  `json:"ev"`
+	Symbol         string  `json:"sym"`
+	ID             string  `json:"i,omitempty"`
+	Exchange       int     `json:"x,omitempty"`
+	Price          float64 `json:"p,omitempty"`
+	Size           int     `json:"s,omitempty"`
+	Conditions     []int32 `json:"c,omitempty"`
+	Timestamp      int     `json:"t,omitempty"`
+	SequenceNumber int64   `json:"q,omitempty"`
+	Tape           int     `json:"z,omitempty"`
+}
+
+func (w *websocketTrade) toStocksTrade() *stocks.Trade {
+	return &stocks.Trade{
+		Base: stocks.Base{
+			Ticker:         w.Symbol,
+			Timestamp:      int64(w.Timestamp * 1_000_000),
+			SequenceNumber: w.SequenceNumber,
+		},
+		ID:         w.ID,
+		Exchange:   int32(w.Exchange),
+		Price:      w.Price,
+		Size_:      uint32(w.Size),
+		Conditions: w.Conditions,
+		Tape:       int32(w.Tape),
+	}
+}
+
 func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade) error {
 	for {
 		select {
@@ -33,13 +62,13 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue,
 	}
 }
 
-func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan stocks.Trade) error {
+func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan websocketTrade) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, &trade)
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, trade.toStocksTrade())
 			if updated {
 				publishQueue.enqueue(aggregate)
 			}
@@ -107,7 +136,7 @@ func main() {
 
 	t, ctx := tomb.WithContext(context.Background())
 
-	trades := make(chan stocks.Trade, 1000)
+	trades := make(chan websocketTrade, 1000)
 
 	t.Go(func() error { return parseLoop(ctx, "wss://nasdaqfeed.polygon.io/stocks", "T.*", trades) })
 
