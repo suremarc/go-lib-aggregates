@@ -82,6 +82,8 @@ func parseLoop[Trade any](ctx context.Context, url, subscribe string, output cha
 			return err
 		}
 
+		// logrus.Info(trades)
+
 		for _, trade := range trades {
 			output <- trade
 		}
@@ -109,7 +111,7 @@ func main() {
 
 	t.Go(func() error { return parseLoop(ctx, "wss://nasdaqfeed.polygon.io/stocks", "T.*", trades) })
 
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 1; i++ {
 		t.Go(func() error {
 			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
 		})

@@ -86,7 +86,7 @@ type Txn struct {
 }
 
 func (t *Txn) Empty() bool {
-	return t.ticker == ""
+	return t.lock == nil
 }
 
 type lockManager struct {

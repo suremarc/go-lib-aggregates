@@ -18,12 +18,13 @@ func ProcessTrade[Txn any, Trade Aggregable](store db.DB[Txn], logic UpdateLogic
 	defer store.Commit(&tx)
 
 	ts := parseTimestampFromInt64(trade.GetTimestamp())
+	ticker := trade.GetTicker()
 
-	aggregate := store.Get(&tx, trade.GetTicker(), ts)
+	aggregate := store.Get(&tx, ticker, ts)
 	newAggregate := logic(aggregate, trade)
 	updated := newAggregate == aggregate
 
-	store.Set(&tx, trade.GetTicker(), ts, aggregate)
+	store.Set(&tx, ticker, ts, aggregate)
 
 	return aggregate, updated
 }
