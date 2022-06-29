@@ -17,6 +17,8 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
+const barLength = db.BarLengthMinute
+
 type websocketTrade struct {
 	EventType      string  `json:"ev"`
 	Symbol         string  `json:"sym"`
@@ -52,12 +54,12 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue,
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.CurrenciesLogic, &trade)
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.CurrenciesLogic, &trade, barLength)
 			if updated {
-				publishQueue.enqueue(aggregate)
+				publishQueue.enqueue(aggregate, barLength)
 			}
 
-			evictionQueue.enqueue(aggregate)
+			evictionQueue.enqueue(aggregate, barLength)
 		}
 	}
 }
@@ -68,12 +70,12 @@ func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evi
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, trade.toStocksTrade())
+			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, trade.toStocksTrade(), barLength)
 			if updated {
-				publishQueue.enqueue(aggregate)
+				publishQueue.enqueue(aggregate, barLength)
 			}
 
-			evictionQueue.enqueue(aggregate)
+			evictionQueue.enqueue(aggregate, barLength)
 		}
 	}
 }
@@ -172,7 +174,7 @@ func main() {
 			shouldDelete := time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
 			if shouldDelete {
 				var tx db.Txn
-				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds())
+				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds(), barLength)
 			}
 
 			return shouldDelete

@@ -6,6 +6,7 @@ import (
 
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/ptime"
+	"github.com/suremarc/go-lib-aggregates/db"
 )
 
 func isAggregateReady(aggregate globals.Aggregate) bool {
@@ -19,9 +20,10 @@ type aggregateQueue struct {
 type index struct {
 	ticker    string
 	timestamp ptime.IMilliseconds
+	barLength db.BarLength
 }
 
-func (a *aggregateQueue) enqueue(aggregate globals.Aggregate) {
+func (a *aggregateQueue) enqueue(aggregate globals.Aggregate, barLength db.BarLength) {
 	a.unpublished.Store(index{
 		ticker:    aggregate.Ticker,
 		timestamp: aggregate.StartTimestamp,

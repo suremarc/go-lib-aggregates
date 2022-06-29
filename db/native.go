@@ -11,6 +11,7 @@ import (
 type index struct {
 	ticker    string
 	timestamp ptime.IMilliseconds
+	barLength BarLength
 }
 
 func snapTimestamp(ts ptime.INanoseconds) ptime.IMilliseconds {
@@ -28,12 +29,13 @@ func NewNativeDB() *NativeDB {
 	return &NativeDB{}
 }
 
-func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds) globals.Aggregate {
+func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) globals.Aggregate {
 	n.maybeAcquireLock(tx, ticker)
 
 	index := index{
 		ticker:    ticker,
 		timestamp: snapTimestamp(timestamp),
+		barLength: barLength,
 	}
 
 	val, _ := n.data.LoadOrStore(index, globals.Aggregate{
@@ -44,23 +46,25 @@ func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds) glo
 	return val.(globals.Aggregate)
 }
 
-func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, aggregate globals.Aggregate) {
+func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength, aggregate globals.Aggregate) {
 	n.maybeAcquireLock(tx, ticker)
 
 	index := index{
 		ticker:    ticker,
 		timestamp: snapTimestamp(timestamp),
+		barLength: barLength,
 	}
 
 	n.data.Store(index, aggregate)
 }
 
-func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds) {
+func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) {
 	n.maybeAcquireLock(tx, ticker)
 
 	index := index{
 		ticker:    ticker,
 		timestamp: snapTimestamp(timestamp),
+		barLength: barLength,
 	}
 
 	n.data.Delete(index)
@@ -69,6 +73,17 @@ func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds) 
 func (n *NativeDB) Commit(tx *Txn) {
 	tx.lock.Unlock()
 	*tx = Txn{}
+}
+
+func (n *NativeDB) List(filter func(globals.Aggregate) bool) []globals.Aggregate {
+	var aggs []globals.Aggregate
+
+	n.data.Range(func(key, value any) bool {
+		aggs = append(aggs, value.(globals.Aggregate))
+		return true
+	})
+
+	return aggs
 }
 
 func (h *NativeDB) maybeAcquireLock(tx *Txn, ticker string) {

@@ -7,8 +7,9 @@ import (
 
 var _ UpdateLogic[*stocks.Trade] = StocksLogic
 
+// TODO: showcase separate intraday and EOD logic
 func StocksLogic(aggregate globals.Aggregate, trade *stocks.Trade) globals.Aggregate {
-	if canUpdateHighLow(trade) {
+	if stocksCanUpdateHighLow(trade) {
 		if aggregate.Open == 0 {
 			aggregate.Open = trade.Price
 		}
@@ -18,7 +19,7 @@ func StocksLogic(aggregate globals.Aggregate, trade *stocks.Trade) globals.Aggre
 		}
 	}
 
-	if canUpdateOpenClose(trade) {
+	if stocksCanUpdateOpenClose(trade) {
 		if trade.Price > aggregate.High {
 			aggregate.High = trade.Price
 		}
@@ -28,7 +29,7 @@ func StocksLogic(aggregate globals.Aggregate, trade *stocks.Trade) globals.Aggre
 		}
 	}
 
-	if canUpdateVolume(trade) {
+	if stocksCanUpdateVolume(trade) {
 		aggregate.VWAP *= aggregate.Volume
 		aggregate.Volume += float64(trade.Size_)
 		aggregate.VWAP += trade.Price
@@ -40,7 +41,7 @@ func StocksLogic(aggregate globals.Aggregate, trade *stocks.Trade) globals.Aggre
 	return aggregate
 }
 
-func canUpdateHighLow(trade *stocks.Trade) bool {
+func stocksCanUpdateHighLow(trade *stocks.Trade) bool {
 	for _, c := range trade.Conditions {
 		switch c {
 		case 2, 7, 15, 16, 20, 21, 22, 29, 37, 52:
@@ -51,7 +52,7 @@ func canUpdateHighLow(trade *stocks.Trade) bool {
 	return true
 }
 
-func canUpdateOpenClose(trade *stocks.Trade) bool {
+func stocksCanUpdateOpenClose(trade *stocks.Trade) bool {
 	for _, c := range trade.Conditions {
 		switch c {
 		case 2, 5, 7, 10, 12, 13, 15, 16, 17, 20, 21, 22, 29, 32, 33, 37, 38, 52:
@@ -62,7 +63,7 @@ func canUpdateOpenClose(trade *stocks.Trade) bool {
 	return true
 }
 
-func canUpdateVolume(trade *stocks.Trade) bool {
+func stocksCanUpdateVolume(trade *stocks.Trade) bool {
 	for _, c := range trade.Conditions {
 		switch c {
 		case 15, 16:
