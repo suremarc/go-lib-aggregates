@@ -27,6 +27,7 @@ func (a *aggregateQueue) enqueue(aggregate globals.Aggregate, barLength db.BarLe
 	a.unpublished.Store(index{
 		ticker:    aggregate.Ticker,
 		timestamp: aggregate.StartTimestamp,
+		barLength: barLength,
 	}, aggregate)
 }
 
