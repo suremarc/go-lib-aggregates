@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/polygon-io/go-lib-models/v2/currencies"
@@ -21,7 +20,7 @@ const barLength = db.BarLengthMinute
 
 func main() {
 	store := db.NewNativeDB()
-	var publishQueue, evictionQueue aggregateQueue
+	var publishQueue aggregateQueue
 
 	t, ctx := tomb.WithContext(context.Background())
 
@@ -31,7 +30,7 @@ func main() {
 
 	for i := 0; i < 8; i++ {
 		t.Go(func() error {
-			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
+			return stocksWorkerLoop(ctx, store, &publishQueue, trades)
 		})
 	}
 
@@ -57,22 +56,6 @@ func main() {
 		})
 	})
 
-	c.AddFunc("0 * * * * *", func() {
-		evictionQueue.sweepAndClear(func(aggregate globals.Aggregate, b db.BarLength) bool {
-			// This implementation only produces minute bars as of now.
-			if b != barLength {
-				return false
-			}
-
-			shouldDelete := time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
-			if shouldDelete {
-				var tx db.Txn
-				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds(), barLength)
-			}
-
-			return shouldDelete
-		})
-	})
 	c.Start()
 
 	if err := t.Wait(); err != nil {
@@ -109,7 +92,7 @@ func (w *websocketTrade) toStocksTrade() *stocks.Trade {
 	}
 }
 
-func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan currencies.Trade) error {
+func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue *aggregateQueue, input <-chan currencies.Trade) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -120,13 +103,11 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue,
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
 			}
-
-			evictionQueue.enqueue(aggregate, barLength)
 		}
 	}
 }
 
-func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evictionQueue *aggregateQueue, input <-chan websocketTrade) error {
+func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue *aggregateQueue, input <-chan websocketTrade) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -137,8 +118,6 @@ func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evi
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
 			}
-
-			evictionQueue.enqueue(aggregate, barLength)
 		}
 	}
 }

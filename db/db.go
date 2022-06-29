@@ -22,12 +22,5 @@ type DB[Txn any] interface {
 	Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength, aggregate globals.Aggregate)
 	Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength)
 
-	// Range cannot be composed together with other operations.
-	// Hence it does not take a *Txn.
-	// Note: since this is a very special operation, it might be
-	// worth extracting into a separate sub-interface,
-	// or leaving it out of this interface altogether.
-	Range(func(globals.Aggregate) bool)
-
 	Commit(tx *Txn)
 }

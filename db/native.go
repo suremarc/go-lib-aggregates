@@ -21,12 +21,31 @@ func snapTimestamp(ts ptime.INanoseconds) ptime.IMilliseconds {
 type NativeDB struct {
 	lockManager lockManager
 	data        sync.Map
+	lastUpdated sync.Map
+	ttl         map[BarLength]time.Duration
+	flushTicker *time.Ticker
 }
 
 var _ DB[Txn] = &NativeDB{}
 
 func NewNativeDB() *NativeDB {
-	return &NativeDB{}
+	n := &NativeDB{
+		ttl: map[BarLength]time.Duration{
+			BarLengthSecond: time.Minute * 15,
+			BarLengthMinute: time.Minute * 15,
+			BarLengthDay:    time.Hour * 24,
+		},
+		flushTicker: time.NewTicker(time.Minute * 15),
+	}
+
+	go func() {
+		// TODO: add context cancellation
+		for range n.flushTicker.C {
+			n.Flush()
+		}
+	}()
+
+	return n
 }
 
 func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) globals.Aggregate {
@@ -56,6 +75,7 @@ func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, bar
 	}
 
 	n.data.Store(index, aggregate)
+	n.lastUpdated.Store(index, ptime.INanosecondsFromTime(time.Now()))
 }
 
 func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) {
@@ -68,6 +88,25 @@ func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, 
 	}
 
 	n.data.Delete(index)
+}
+
+func (n *NativeDB) Flush() {
+	n.data.Range((func(key, value any) bool {
+		index := key.(index)
+		var tx Txn
+		n.maybeAcquireLock(&tx, index.ticker)
+		defer n.Commit(&tx)
+
+		lastUpdatedNanosAny, _ := n.lastUpdated.LoadOrStore(index, ptime.INanosecondsFromTime(time.Now()))
+		lastUpdatedNanos := lastUpdatedNanosAny.(ptime.INanoseconds).ToDuration().Nanoseconds()
+
+		ttl, ok := n.ttl[index.barLength]
+		if ok && time.Since(time.Unix(lastUpdatedNanos/1_000_000_000, lastUpdatedNanos%1_000_000_000)) > ttl {
+			n.Delete(&tx, index.ticker, index.timestamp.ToINanoseconds(), index.barLength)
+		}
+
+		return true
+	}))
 }
 
 func (n *NativeDB) Commit(tx *Txn) {
