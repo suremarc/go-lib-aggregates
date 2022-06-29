@@ -19,6 +19,67 @@ import (
 
 const barLength = db.BarLengthMinute
 
+func main() {
+	store := db.NewNativeDB()
+	var publishQueue, evictionQueue aggregateQueue
+
+	t, ctx := tomb.WithContext(context.Background())
+
+	trades := make(chan websocketTrade, 1000)
+
+	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
+
+	for i := 0; i < 8; i++ {
+		t.Go(func() error {
+			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
+		})
+	}
+
+	c := cron.New(cron.WithSeconds())
+	c.AddFunc("* * * * * *", func() {
+		publishQueue.sweepAndClear(func(aggregate globals.Aggregate, _ db.BarLength) bool {
+			if !isAggregateReady(aggregate) {
+				return false
+			}
+
+			fmt.Printf(
+				"%s %s - open: $%.2f, close: $%.2f, high: $%.2f, low: $%.2f, volume: %f\n",
+				aggregate.Ticker,
+				aggregate.StartTimestamp.ToTime().Format("15:04:05"),
+				aggregate.Open,
+				aggregate.Close,
+				aggregate.High,
+				aggregate.Low,
+				aggregate.Volume,
+			)
+
+			return true
+		})
+	})
+
+	c.AddFunc("0 * * * * *", func() {
+		evictionQueue.sweepAndClear(func(aggregate globals.Aggregate, b db.BarLength) bool {
+			// This implementation only produces minute bars as of now.
+			if b != barLength {
+				return false
+			}
+
+			shouldDelete := time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
+			if shouldDelete {
+				var tx db.Txn
+				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds(), barLength)
+			}
+
+			return shouldDelete
+		})
+	})
+	c.Start()
+
+	if err := t.Wait(); err != nil {
+		logrus.WithError(err).Fatal("died with error")
+	}
+}
+
 type websocketTrade struct {
 	EventType      string  `json:"ev"`
 	Symbol         string  `json:"sym"`
@@ -54,6 +115,7 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue,
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
+			// Unfortunately, Go will not infer that db.Txn is our type parameter, so we have to be explicit.
 			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.CurrenciesLogic, &trade, barLength)
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
@@ -70,6 +132,7 @@ func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue, evi
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
+			// Same as above, we have to be explicit with our type parameter.
 			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, trade.toStocksTrade(), barLength)
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
@@ -118,71 +181,5 @@ func parseLoop[Trade any](ctx context.Context, url, subscribe string, output cha
 		for _, trade := range trades {
 			output <- trade
 		}
-	}
-}
-
-func displayLoop(ctx context.Context, input <-chan globals.Aggregate) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case aggregate := <-input:
-			fmt.Println(aggregate)
-		}
-	}
-}
-
-func main() {
-	store := db.NewNativeDB()
-	var publishQueue, evictionQueue aggregateQueue
-
-	t, ctx := tomb.WithContext(context.Background())
-
-	trades := make(chan websocketTrade, 1000)
-
-	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
-
-	for i := 0; i < 8; i++ {
-		t.Go(func() error {
-			return stocksWorkerLoop(ctx, store, &publishQueue, &evictionQueue, trades)
-		})
-	}
-
-	c := cron.New(cron.WithSeconds())
-	c.AddFunc("* * * * * *", func() {
-		publishQueue.sweepAndClear(func(aggregate globals.Aggregate) bool {
-			if !isAggregateReady(aggregate) {
-				return false
-			}
-
-			fmt.Printf(
-				"%s %s - open: $%.2f, close: $%.2f, high: $%.2f, low: $%.2f, volume: %f\n",
-				aggregate.Ticker,
-				aggregate.StartTimestamp.ToTime().Format("15:04:05"),
-				aggregate.Open,
-				aggregate.Close,
-				aggregate.High,
-				aggregate.Low,
-				aggregate.Volume,
-			)
-
-			return true
-		})
-	})
-	c.AddFunc("0 * * * * *", func() {
-		evictionQueue.sweepAndClear(func(aggregate globals.Aggregate) bool {
-			shouldDelete := time.Since(aggregate.StartTimestamp.ToTime()) > 15*time.Minute
-			if shouldDelete {
-				var tx db.Txn
-				store.Delete(&tx, aggregate.Ticker, aggregate.StartTimestamp.ToINanoseconds(), barLength)
-			}
-
-			return shouldDelete
-		})
-	})
-	c.Start()
-
-	if err := t.Wait(); err != nil {
-		logrus.WithError(err).Fatal("died with error")
 	}
 }

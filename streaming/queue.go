@@ -31,10 +31,10 @@ func (a *aggregateQueue) enqueue(aggregate globals.Aggregate, barLength db.BarLe
 	}, aggregate)
 }
 
-func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate) bool) {
+func (a *aggregateQueue) sweepAndClear(f func(globals.Aggregate, db.BarLength) bool) {
 	a.unpublished.Range(func(key, value any) bool {
 		aggregate := value.(globals.Aggregate)
-		if shouldDelete := f(aggregate); shouldDelete {
+		if shouldDelete := f(aggregate, key.(index).barLength); shouldDelete {
 			a.unpublished.Delete(key)
 		}
 

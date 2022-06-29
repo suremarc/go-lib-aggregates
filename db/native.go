@@ -75,15 +75,10 @@ func (n *NativeDB) Commit(tx *Txn) {
 	*tx = Txn{}
 }
 
-func (n *NativeDB) List(filter func(globals.Aggregate) bool) []globals.Aggregate {
-	var aggs []globals.Aggregate
-
+func (n *NativeDB) Range(fn func(globals.Aggregate) bool) {
 	n.data.Range(func(key, value any) bool {
-		aggs = append(aggs, value.(globals.Aggregate))
-		return true
+		return fn(value.(globals.Aggregate))
 	})
-
-	return aggs
 }
 
 func (h *NativeDB) maybeAcquireLock(tx *Txn, ticker string) {
