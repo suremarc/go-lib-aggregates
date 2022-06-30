@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/polygon-io/go-lib-models/v2/currencies"
@@ -98,8 +99,15 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue 
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
+			ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
+			defer cancel()
 			// Unfortunately, Go will not infer that db.Txn is our type parameter, so we have to be explicit.
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.CurrenciesLogic, &trade, barLength)
+			aggregate, updated, err := logic.ProcessTrade[db.Tx](ctx, store, logic.CurrenciesLogic, &trade, barLength)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't process trade")
+				continue
+			}
+
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
 			}
@@ -113,8 +121,15 @@ func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue *agg
 		case <-ctx.Done():
 			return ctx.Err()
 		case trade := <-input:
+			ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
+			defer cancel()
 			// Same as above, we have to be explicit with our type parameter.
-			aggregate, updated := logic.ProcessTrade[db.Txn](store, logic.StocksLogic, trade.toStocksTrade(), barLength)
+			aggregate, updated, err := logic.ProcessTrade[db.Tx](ctx, store, logic.StocksLogic, trade.toStocksTrade(), barLength)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't process trade")
+				continue
+			}
+
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
 			}

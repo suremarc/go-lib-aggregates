@@ -1,21 +1,19 @@
 package db
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/ptime"
+	"github.com/sirupsen/logrus"
 )
 
 type index struct {
 	ticker    string
 	timestamp ptime.IMilliseconds
 	barLength BarLength
-}
-
-func snapTimestamp(ts ptime.INanoseconds) ptime.IMilliseconds {
-	return ptime.IMillisecondsFromDuration(ts.ToDuration().Truncate(time.Minute))
 }
 
 type NativeDB struct {
@@ -26,7 +24,7 @@ type NativeDB struct {
 	flushTicker *time.Ticker
 }
 
-var _ DB[Txn] = &NativeDB{}
+var _ DB[Tx] = &NativeDB{}
 
 func NewNativeDB() *NativeDB {
 	n := &NativeDB{
@@ -48,37 +46,49 @@ func NewNativeDB() *NativeDB {
 	return n
 }
 
-func (n *NativeDB) Get(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) globals.Aggregate {
+func (n *NativeDB) Get(tx *Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) (globals.Aggregate, error) {
 	n.maybeAcquireLock(tx, ticker)
 
 	index := index{
 		ticker:    ticker,
 		timestamp: snapTimestamp(timestamp),
 		barLength: barLength,
+	}
+
+	duration, err := getBarLengthDuration(barLength)
+	if err != nil {
+		panic(err.Error())
 	}
 
 	val, _ := n.data.LoadOrStore(index, globals.Aggregate{
 		Ticker:         index.ticker,
 		StartTimestamp: index.timestamp,
-		EndTimestamp:   index.timestamp + ptime.IMillisecondsFromDuration(time.Minute),
+		EndTimestamp:   index.timestamp + ptime.IMillisecondsFromDuration(duration),
 	})
-	return val.(globals.Aggregate)
+	return val.(globals.Aggregate), nil
 }
 
-func (n *NativeDB) Set(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength, aggregate globals.Aggregate) {
-	n.maybeAcquireLock(tx, ticker)
+func (n *NativeDB) Insert(tx *Tx, aggregate globals.Aggregate) error {
+	n.maybeAcquireLock(tx, aggregate.Ticker)
+
+	barLength, err := getBarLength(aggregate)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	index := index{
-		ticker:    ticker,
-		timestamp: snapTimestamp(timestamp),
+		ticker:    aggregate.Ticker,
+		timestamp: aggregate.Timestamp,
 		barLength: barLength,
 	}
 
 	n.data.Store(index, aggregate)
 	n.lastUpdated.Store(index, ptime.INanosecondsFromTime(time.Now()))
+
+	return nil
 }
 
-func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, barLength BarLength) {
+func (n *NativeDB) Delete(tx *Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) error {
 	n.maybeAcquireLock(tx, ticker)
 
 	index := index{
@@ -88,12 +98,14 @@ func (n *NativeDB) Delete(tx *Txn, ticker string, timestamp ptime.INanoseconds, 
 	}
 
 	n.data.Delete(index)
+
+	return nil
 }
 
 func (n *NativeDB) Flush() {
 	n.data.Range((func(key, value any) bool {
 		index := key.(index)
-		var tx Txn
+		var tx Tx
 		n.maybeAcquireLock(&tx, index.ticker)
 		defer n.Commit(&tx)
 
@@ -102,16 +114,24 @@ func (n *NativeDB) Flush() {
 
 		ttl, ok := n.ttl[index.barLength]
 		if ok && time.Since(time.Unix(lastUpdatedNanos/1_000_000_000, lastUpdatedNanos%1_000_000_000)) > ttl {
-			n.Delete(&tx, index.ticker, index.timestamp.ToINanoseconds(), index.barLength)
+			if err := n.Delete(&tx, index.ticker, index.timestamp.ToINanoseconds(), index.barLength); err != nil {
+				logrus.WithField("index", index).WithError(err).Error("couldn't delete row")
+			}
 		}
 
 		return true
 	}))
 }
 
-func (n *NativeDB) Commit(tx *Txn) {
+func (n *NativeDB) NewTx(context.Context) (*Tx, error) {
+	return &Tx{}, nil
+}
+
+func (n *NativeDB) Commit(tx *Tx) error {
 	tx.lock.Unlock()
-	*tx = Txn{}
+	*tx = Tx{}
+
+	return nil
 }
 
 func (n *NativeDB) Range(fn func(globals.Aggregate) bool) {
@@ -120,7 +140,7 @@ func (n *NativeDB) Range(fn func(globals.Aggregate) bool) {
 	})
 }
 
-func (h *NativeDB) maybeAcquireLock(tx *Txn, ticker string) {
+func (h *NativeDB) maybeAcquireLock(tx *Tx, ticker string) {
 	if tx.Empty() {
 		tx.ticker = ticker
 		tx.lock = h.lockManager.acquire(ticker)
@@ -129,12 +149,12 @@ func (h *NativeDB) maybeAcquireLock(tx *Txn, ticker string) {
 	}
 }
 
-type Txn struct {
+type Tx struct {
 	ticker string
 	lock   *sync.Mutex
 }
 
-func (t *Txn) Empty() bool {
+func (t *Tx) Empty() bool {
 	return t.lock == nil
 }
 
