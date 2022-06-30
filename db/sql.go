@@ -48,7 +48,7 @@ func (s *SQL) Get(tx *sql.Tx, ticker string, timestamp ptime.INanoseconds, barLe
 func (s *SQL) Insert(tx *sql.Tx, aggregate globals.Aggregate) error {
 	barLength, err := getBarLength(aggregate)
 	if err != nil {
-		return err
+		panic(err.Error())
 	}
 
 	_, err = tx.Exec(
