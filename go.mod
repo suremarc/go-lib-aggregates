@@ -3,12 +3,10 @@ module github.com/suremarc/go-lib-aggregates
 go 1.18
 
 require (
-	github.com/dustin/go-humanize v1.0.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/websocket v1.5.0
 	github.com/klauspost/compress v1.15.7
 	github.com/lib/pq v1.10.6
-	github.com/machinebox/progress v0.2.0
 	github.com/polygon-io/go-lib-models/v2 v2.27.1
 	github.com/polygon-io/ptime v0.2.1
 	github.com/robfig/cron/v3 v3.0.1
@@ -27,7 +25,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mailru/easyjson v0.7.1 // indirect
-	github.com/matryer/is v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/onsi/gomega v1.19.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
