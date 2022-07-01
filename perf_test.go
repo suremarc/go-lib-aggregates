@@ -21,25 +21,33 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func BenchmarkSQLite(b *testing.B) {
+func BenchmarkSQLiteInMemory(b *testing.B) {
 	sqlDB, err := sql.Open("sqlite", "file::memory:?cache=shared")
 	require.NoError(b, err)
 
 	store, err := db.NewSQL(sqlDB)
 	require.NoError(b, err)
 
-	b.Log("Benchmarking SQLite")
+	benchmarkDB[sql.Tx](b, store, 1)
+}
 
-	benchmarkDB[sql.Tx](b, store)
+func BenchmarkSQLiteOnDisk(b *testing.B) {
+	sqlDB, err := sql.Open("sqlite", "data.db; PRAGMA journal_mode=WAL;")
+	require.NoError(b, err)
+
+	store, err := db.NewSQL(sqlDB)
+	require.NoError(b, err)
+
+	benchmarkDB[sql.Tx](b, store, 1)
 }
 
 func BenchmarkNativeDB(b *testing.B) {
 	n := db.NewNativeDB()
 
-	benchmarkDB[db.Tx](b, n)
+	benchmarkDB[db.Tx](b, n, 4)
 }
 
-func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx]) {
+func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
 	tradesChan := make(chan stocks.Trade, 1000)
 	go func() {
 		defer close(tradesChan)
@@ -87,7 +95,7 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx]) {
 	ctx := context.Background()
 
 	var eg errgroup.Group
-	for i := 0; i < 1; i++ {
+	for i := 0; i < concurrency; i++ {
 		eg.Go(func() error {
 			for trade := range tradesChan {
 				if _, _, err := logic.ProcessTrade(ctx, store, logic.StocksLogic, &trade, db.BarLengthMinute); err != nil {
