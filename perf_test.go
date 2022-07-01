@@ -14,6 +14,7 @@ import (
 	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/suremarc/go-lib-aggregates/db"
 	"github.com/suremarc/go-lib-aggregates/logic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,12 @@ func BenchmarkSQLite(b *testing.B) {
 	b.Log("Benchmarking SQLite")
 
 	benchmarkDB[sql.Tx](b, store)
+}
+
+func BenchmarkNativeDB(b *testing.B) {
+	n := db.NewNativeDB()
+
+	benchmarkDB[db.Tx](b, n)
 }
 
 func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx]) {
@@ -79,8 +86,18 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx]) {
 
 	ctx := context.Background()
 
-	for trade := range tradesChan {
-		_, _, err := logic.ProcessTrade(ctx, store, logic.StocksLogic, &trade, db.BarLengthMinute)
-		require.NoError(b, err)
+	var eg errgroup.Group
+	for i := 0; i < 1; i++ {
+		eg.Go(func() error {
+			for trade := range tradesChan {
+				if _, _, err := logic.ProcessTrade(ctx, store, logic.StocksLogic, &trade, db.BarLengthMinute); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
 	}
+
+	require.NoError(b, eg.Wait())
 }

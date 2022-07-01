@@ -12,6 +12,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.7.0
 	github.com/stretchr/testify v1.7.0
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	modernc.org/sqlite v1.17.3
 )
