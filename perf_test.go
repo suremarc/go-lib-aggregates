@@ -48,13 +48,10 @@ func BenchmarkSQLiteOnDisk(b *testing.B) {
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, db.DriverPostgresQL, os.Getenv("POSTGRES_URL"), 4)
+	benchmarkSQL(b, db.DriverPostgresQL, "postgresql://localhost?sslmode=disable", 1)
 }
 
 func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {
-	b.Log(driver)
-	b.Log(dataSourceName)
-
 	store, err := db.NewSQL(driver, dataSourceName)
 	require.NoError(b, err)
 
@@ -97,13 +94,20 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
 		require.NoError(b, err)
 
 		var record []string
+		var numRows int
 		for record, err = r.Read(); err == nil; record, err = r.Read() {
 			var trade stocks.Trade
 			require.NoError(b, trade.FromCSV(record))
 			tradesChan <- trade
+			numRows++
+			if numRows >= b.N {
+				break
+			}
 		}
 
-		require.ErrorIs(b, err, io.EOF)
+		if err != nil {
+			require.ErrorIs(b, err, io.EOF)
+		}
 	}()
 
 	ctx := context.Background()
