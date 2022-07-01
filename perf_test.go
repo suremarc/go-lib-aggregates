@@ -40,11 +40,11 @@ func BenchmarkRedis(b *testing.B) {
 }
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared&synchronous_commit=off", 1)
+	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared", 1)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "data.db; pragma journal_mode=WAL; pragma synchronous_commit=off; pragma mmap_size=30000000000; pragma temp_store=memory; pragma page_size=32768", 4)
+	benchmarkSQL(b, db.DriverSQLite, "data.db", 1)
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
