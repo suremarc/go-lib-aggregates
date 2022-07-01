@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/go-redis/redis/v8"
 	"github.com/machinebox/progress"
 	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/suremarc/go-lib-aggregates/db"
@@ -23,12 +24,27 @@ import (
 	_ "github.com/lib/pq"
 )
 
+func BenchmarkNativeDB(b *testing.B) {
+	n := db.NewNativeDB()
+
+	benchmarkDB[db.Tx](b, n, 4)
+}
+
+func BenchmarkRedis(b *testing.B) {
+	client := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	store := db.NewRedis(client)
+	benchmarkDB[db.RedisTx](b, store, 8)
+}
+
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared", 1)
+	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared&synchronous_commit=off", 1)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "data.db", 1)
+	benchmarkSQL(b, db.DriverSQLite, "data.db; pragma journal_mode=WAL; pragma synchronous_commit=off; pragma mmap_size=30000000000; pragma temp_store=memory; pragma page_size=32768", 4)
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
@@ -43,11 +59,6 @@ func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurr
 	require.NoError(b, err)
 
 	benchmarkDB[sql.Tx](b, store, concurrency)
-}
-func BenchmarkNativeDB(b *testing.B) {
-	n := db.NewNativeDB()
-
-	benchmarkDB[db.Tx](b, n, 4)
 }
 
 func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
