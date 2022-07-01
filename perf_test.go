@@ -7,11 +7,8 @@ import (
 	"io"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/go-redis/redis/v8"
-	"github.com/machinebox/progress"
 	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/suremarc/go-lib-aggregates/db"
 	"github.com/suremarc/go-lib-aggregates/logic"
@@ -71,25 +68,7 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
 		fi, err := os.Open("./trades-2022-06-24.csv.zst")
 		require.NoError(b, err)
 
-		stat, err := fi.Stat()
-		require.NoError(b, err)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		progressReader := progress.NewReader(fi)
-		go func() {
-			for p := range progress.NewTicker(ctx, progressReader, stat.Size(), time.Second*15) {
-				b.Logf(
-					"%s/%s read (%.2f%% done, %v remaining)\n",
-					humanize.IBytes(uint64(p.N())),
-					humanize.IBytes(uint64(p.Size())),
-					p.Percent(),
-					p.Remaining().Round(time.Second))
-			}
-		}()
-
-		zReader, err := zstd.NewReader(progressReader)
+		zReader, err := zstd.NewReader(fi)
 		require.NoError(b, err)
 		defer zReader.Close()
 
