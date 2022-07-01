@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/ptime"
@@ -19,8 +20,17 @@ type SQL struct {
 
 var _ DB[sql.Tx] = &SQL{}
 
-func NewSQL(db *sql.DB) (*SQL, error) {
-	_, err := db.Exec(sqlCreateTableStmt)
+type Driver string
+
+const (
+	DriverPostgresQL = "postgres"
+	DriverSQLite     = "sqlite"
+)
+
+func NewSQL(driver Driver, dataSource string) (*SQL, error) {
+	db, err := sql.Open(string(driver), dataSource)
+
+	_, err = db.Exec(getSQLStmt(driver, sqlCreateTableStmt))
 	if err != nil {
 		return nil, err
 	}
@@ -29,39 +39,53 @@ func NewSQL(db *sql.DB) (*SQL, error) {
 		db: db,
 	}
 
-	if s.selectStmt, err = db.Prepare(sqlSelectStmt); err != nil {
+	if s.selectStmt, err = db.Prepare(getSQLStmt(driver, sqlSelectStmt)); err != nil {
 		return nil, fmt.Errorf("prepare select: %w", err)
 	}
 
-	if s.insertStmt, err = db.Prepare(sqlInsertStmt); err != nil {
+	if s.insertStmt, err = db.Prepare(getSQLStmt(driver, sqlInsertStmt)); err != nil {
 		return nil, fmt.Errorf("prepare insert: %w", err)
 	}
 
-	if s.deleteStmt, err = db.Prepare(sqlDeleteStmt); err != nil {
+	if s.deleteStmt, err = db.Prepare(getSQLStmt(driver, sqlDeleteStmt)); err != nil {
 		return nil, fmt.Errorf("prepare delete: %w", err)
 	}
 
 	return s, nil
 }
 
+func getSQLStmt(d Driver, stmt string) string {
+	if d == DriverPostgresQL {
+		stmt = strings.ReplaceAll(stmt, "DOUBLE", "DOUBLE PRECISION")
+
+		i := 1
+		for strings.Contains(stmt, "?") {
+			stmt = strings.Replace(stmt, "?", fmt.Sprintf("$%d", i), 1)
+			i += 1
+		}
+	}
+
+	return stmt
+}
+
 const (
 	sqlCreateTableStmt = `CREATE TABLE IF NOT EXISTS aggregates (
 	ticker VARCHAR(24) NOT NULL,
-	volume DOUBLE PRECISION NOT NULL,
-	vwap DOUBLE PRECISION NOT NULL,
-	open DOUBLE PRECISION NOT NULL,
-	close DOUBLE PRECISION NOT NULL,
-	high DOUBLE PRECISION NOT NULL,
-	low DOUBLE PRECISION NOT NULL,
+	volume DOUBLE NOT NULL,
+	vwap DOUBLE NOT NULL,
+	open DOUBLE NOT NULL,
+	close DOUBLE NOT NULL,
+	high DOUBLE NOT NULL,
+	low DOUBLE NOT NULL,
 	timestamp BIGINT NOT NULL,
 	transactions INT NOT NULL,
 	bar_length CHAR(3) NOT NULL,
 	PRIMARY KEY (ticker, timestamp, bar_length)
 )`
 
-	sqlSelectStmt = `SELECT volume, vwap, open, close, high, low, transactions FROM aggregates WHERE ticker=$1 AND timestamp=$2 AND bar_length=$3`
-	sqlInsertStmt = `INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
-	sqlDeleteStmt = `DELETE FROM aggregates WHERE ticker=$1 AND timestamp=$2 AND bar_length=$3`
+	sqlSelectStmt = `SELECT volume, vwap, open, close, high, low, transactions FROM aggregates WHERE ticker=? AND timestamp=? AND bar_length=?`
+	sqlInsertStmt = `INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES (?,?,?,?,?,?,?,?,?,?)`
+	sqlDeleteStmt = `DELETE FROM aggregates WHERE ticker=? AND timestamp=? AND bar_length=?`
 )
 
 func (s *SQL) Get(tx *sql.Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) (agg globals.Aggregate, err error) {

@@ -24,22 +24,22 @@ import (
 )
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	benchmarkSQL(b, "sqlite", "file::memory:?cache=shared", 1)
+	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared", 1)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	benchmarkSQL(b, "sqlite", "data.db", 1)
+	benchmarkSQL(b, db.DriverSQLite, "data.db", 1)
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, "postgres", os.Getenv("POSTGRES_URL"), 4)
+	benchmarkSQL(b, db.DriverPostgresQL, os.Getenv("POSTGRES_URL"), 50)
 }
 
-func benchmarkSQL(b *testing.B, driverName, dataSourceName string, concurrency int) {
-	sqlDB, err := sql.Open(driverName, dataSourceName)
-	require.NoError(b, err)
+func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {
+	b.Log(driver)
+	b.Log(dataSourceName)
 
-	store, err := db.NewSQL(sqlDB)
+	store, err := db.NewSQL(driver, dataSourceName)
 	require.NoError(b, err)
 
 	benchmarkDB[sql.Tx](b, store, concurrency)
