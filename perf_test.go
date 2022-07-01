@@ -32,7 +32,7 @@ func BenchmarkSQLiteInMemory(b *testing.B) {
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	sqlDB, err := sql.Open("sqlite", "data.db; PRAGMA journal_mode=WAL;")
+	sqlDB, err := sql.Open("sqlite", "data.db")
 	require.NoError(b, err)
 
 	store, err := db.NewSQL(sqlDB)
