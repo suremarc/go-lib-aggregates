@@ -20,13 +20,6 @@ type SQL struct {
 
 var _ DB[sql.Tx] = &SQL{}
 
-type Driver string
-
-const (
-	DriverPostgresQL = "postgres"
-	DriverSQLite     = "sqlite"
-)
-
 func NewSQL(db *sql.DB) (*SQL, error) {
 	_, err := db.Exec(sqlCreateTableStmt)
 	if err != nil {

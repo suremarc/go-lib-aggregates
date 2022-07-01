@@ -37,18 +37,18 @@ func BenchmarkRedis(b *testing.B) {
 }
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "file::memory:?cache=shared", 1)
+	benchmarkSQL(b, "sqlite", "file::memory:?cache=shared", 1)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	benchmarkSQL(b, db.DriverSQLite, "data.db", 1)
+	benchmarkSQL(b, "sqlite", "data.db", 1)
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, db.DriverPostgresQL, "postgresql://localhost?sslmode=disable", 4)
+	benchmarkSQL(b, "postgres", "postgresql://localhost?sslmode=disable", 4)
 }
 
-func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {
+func benchmarkSQL(b *testing.B, driver, dataSourceName string, concurrency int) {
 	sqlDB, err := sql.Open(string(driver), dataSourceName)
 	require.NoError(b, err)
 
