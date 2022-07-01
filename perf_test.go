@@ -36,7 +36,7 @@ func BenchmarkRedis(b *testing.B) {
 	})
 
 	store := db.NewRedis(client)
-	benchmarkDB[db.RedisTx](b, store, 8)
+	benchmarkDB[db.RedisTx](b, store, 4)
 }
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
@@ -48,7 +48,7 @@ func BenchmarkSQLiteOnDisk(b *testing.B) {
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, db.DriverPostgresQL, "postgresql://localhost?sslmode=disable", 1)
+	benchmarkSQL(b, db.DriverPostgresQL, "postgresql://localhost?sslmode=disable", 4)
 }
 
 func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {

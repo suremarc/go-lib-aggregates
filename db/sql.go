@@ -55,14 +55,8 @@ func NewSQL(driver Driver, dataSource string) (*SQL, error) {
 }
 
 func getSQLStmt(d Driver, stmt string) string {
-	if d == DriverPostgresQL {
+	if d == DriverPostgresQL || d == DriverSQLite {
 		stmt = strings.ReplaceAll(stmt, "DOUBLE", "DOUBLE PRECISION")
-
-		i := 1
-		for strings.Contains(stmt, "?") {
-			stmt = strings.Replace(stmt, "?", fmt.Sprintf("$%d", i), 1)
-			i += 1
-		}
 	}
 
 	return stmt
@@ -83,9 +77,9 @@ const (
 	PRIMARY KEY (ticker, timestamp, bar_length)
 )`
 
-	sqlSelectStmt = `SELECT volume, vwap, open, close, high, low, transactions FROM aggregates WHERE ticker=? AND timestamp=? AND bar_length=?`
-	sqlInsertStmt = `INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES (?,?,?,?,?,?,?,?,?,?)`
-	sqlDeleteStmt = `DELETE FROM aggregates WHERE ticker=? AND timestamp=? AND bar_length=?`
+	sqlSelectStmt = `SELECT volume, vwap, open, close, high, low, transactions FROM aggregates WHERE ticker=$1 AND timestamp=$2 AND bar_length=$3`
+	sqlInsertStmt = `INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (ticker, timestamp, bar_length) DO UPDATE SET volume=$2, vwap=$3, open=$4, close=$5, high=$6, low=$7, transactions=$8`
+	sqlDeleteStmt = `DELETE FROM aggregates WHERE ticker=$1 AND timestamp=$2 AND bar_length=$3`
 )
 
 func (s *SQL) Get(tx *sql.Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) (agg globals.Aggregate, err error) {
@@ -119,10 +113,6 @@ func (s *SQL) Upsert(tx *sql.Tx, aggregate globals.Aggregate) error {
 	if err != nil {
 		tx.Rollback()
 		return err
-	}
-
-	if err := s.Delete(tx, aggregate.Ticker, aggregate.Timestamp.ToINanoseconds(), barLength); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("delete: %w", err)
 	}
 
 	_, err = tx.Stmt(s.insertStmt).Exec(
