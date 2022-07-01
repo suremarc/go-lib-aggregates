@@ -6,6 +6,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/klauspost/compress v1.15.7
+	github.com/lib/pq v1.10.6
 	github.com/machinebox/progress v0.2.0
 	github.com/polygon-io/go-lib-models/v2 v2.27.1
 	github.com/polygon-io/ptime v0.2.1

@@ -19,28 +19,31 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
+
+	_ "github.com/lib/pq"
 )
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	sqlDB, err := sql.Open("sqlite", "file::memory:?cache=shared")
-	require.NoError(b, err)
-
-	store, err := db.NewSQL(sqlDB)
-	require.NoError(b, err)
-
-	benchmarkDB[sql.Tx](b, store, 1)
+	benchmarkSQL(b, "sqlite", "file::memory:?cache=shared", 1)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	sqlDB, err := sql.Open("sqlite", "data.db")
+	benchmarkSQL(b, "sqlite", "data.db", 1)
+}
+
+func BenchmarkPostgresQL(b *testing.B) {
+	benchmarkSQL(b, "postgres", os.Getenv("POSTGRES_URL"), 4)
+}
+
+func benchmarkSQL(b *testing.B, driverName, dataSourceName string, concurrency int) {
+	sqlDB, err := sql.Open(driverName, dataSourceName)
 	require.NoError(b, err)
 
 	store, err := db.NewSQL(sqlDB)
 	require.NoError(b, err)
 
-	benchmarkDB[sql.Tx](b, store, 1)
+	benchmarkDB[sql.Tx](b, store, concurrency)
 }
-
 func BenchmarkNativeDB(b *testing.B) {
 	n := db.NewNativeDB()
 
