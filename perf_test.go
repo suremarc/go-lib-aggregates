@@ -32,7 +32,7 @@ func BenchmarkSQLiteOnDisk(b *testing.B) {
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, db.DriverPostgresQL, os.Getenv("POSTGRES_URL"), 50)
+	benchmarkSQL(b, db.DriverPostgresQL, os.Getenv("POSTGRES_URL"), 4)
 }
 
 func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {
