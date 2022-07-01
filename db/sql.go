@@ -22,16 +22,17 @@ func NewSQL(ctx context.Context, db *sql.DB) *SQL {
 }
 
 const sqlCreateTableStmt = `CREATE TABLE IF NOT EXISTS aggregates (
-	ticker VARCHAR(24),
-	volume DOUBLE,
-	vwap DOUBLE,
-	open DOUBLE,
-	close DOUBLE,
-	high DOUBLE,
-	low DOUBLE,
-	timestamp BIGINT,
-	transactions INT,
-	bar_length CHAR(3)
+	ticker VARCHAR(24) NOT NULL,
+	volume DOUBLE NOT NULL,
+	vwap DOUBLE NOT NULL,
+	open DOUBLE NOT NULL,
+	close DOUBLE NOT NULL,
+	high DOUBLE NOT NULL,
+	low DOUBLE NOT NULL,
+	timestamp BIGINT NOT NULL,
+	transactions INT NOT NULL,
+	bar_length CHAR(3) NOT NULL,
+	PRIMARY KEY (ticker, timestamp, bar_length);
 )`
 
 func (s *SQL) Get(tx *sql.Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) (agg globals.Aggregate, err error) {
@@ -52,7 +53,7 @@ func (s *SQL) Upsert(tx *sql.Tx, aggregate globals.Aggregate) error {
 	}
 
 	_, err = tx.Exec(
-		"INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO aggregates (ticker, volume, vwap, open, close, high, low, timestamp, transactions, bar_length) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE",
 		aggregate.Ticker,
 		aggregate.Volume,
 		aggregate.VWAP,
