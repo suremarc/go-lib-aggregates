@@ -52,7 +52,13 @@ func BenchmarkPostgresQL(b *testing.B) {
 }
 
 func benchmarkSQL(b *testing.B, driver db.Driver, dataSourceName string, concurrency int) {
-	store, err := db.NewSQL(driver, dataSourceName)
+	sqlDB, err := sql.Open(string(driver), dataSourceName)
+	require.NoError(b, err)
+
+	_, err = sqlDB.Exec("DROP TABLE IF EXISTS aggregates")
+	require.NoError(b, err)
+
+	store, err := db.NewSQL(sqlDB)
 	require.NoError(b, err)
 
 	benchmarkDB[sql.Tx](b, store, concurrency)

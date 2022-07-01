@@ -27,10 +27,13 @@ const (
 	DriverSQLite     = "sqlite"
 )
 
-func NewSQL(driver Driver, dataSource string) (*SQL, error) {
-	db, err := sql.Open(string(driver), dataSource)
+func NewSQL(db *sql.DB) (*SQL, error) {
+	_, err := db.Exec(sqlCreateTableStmt)
+	if err != nil {
+		// try replacing the double type
+		_, err = db.Exec(strings.ReplaceAll(sqlCreateTableStmt, "DOUBLE", "DOUBLE PRECISION"))
+	}
 
-	_, err = db.Exec(getSQLStmt(driver, sqlCreateTableStmt))
 	if err != nil {
 		return nil, err
 	}
@@ -39,27 +42,19 @@ func NewSQL(driver Driver, dataSource string) (*SQL, error) {
 		db: db,
 	}
 
-	if s.selectStmt, err = db.Prepare(getSQLStmt(driver, sqlSelectStmt)); err != nil {
+	if s.selectStmt, err = db.Prepare(sqlSelectStmt); err != nil {
 		return nil, fmt.Errorf("prepare select: %w", err)
 	}
 
-	if s.insertStmt, err = db.Prepare(getSQLStmt(driver, sqlInsertStmt)); err != nil {
+	if s.insertStmt, err = db.Prepare(sqlInsertStmt); err != nil {
 		return nil, fmt.Errorf("prepare insert: %w", err)
 	}
 
-	if s.deleteStmt, err = db.Prepare(getSQLStmt(driver, sqlDeleteStmt)); err != nil {
+	if s.deleteStmt, err = db.Prepare(sqlDeleteStmt); err != nil {
 		return nil, fmt.Errorf("prepare delete: %w", err)
 	}
 
 	return s, nil
-}
-
-func getSQLStmt(d Driver, stmt string) string {
-	if d == DriverPostgresQL || d == DriverSQLite {
-		stmt = strings.ReplaceAll(stmt, "DOUBLE", "DOUBLE PRECISION")
-	}
-
-	return stmt
 }
 
 const (
