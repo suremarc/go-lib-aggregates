@@ -68,7 +68,7 @@ func (n *NativeDB) Get(tx *Tx, ticker string, timestamp ptime.INanoseconds, barL
 	return val.(globals.Aggregate), nil
 }
 
-func (n *NativeDB) Insert(tx *Tx, aggregate globals.Aggregate) error {
+func (n *NativeDB) Upsert(tx *Tx, aggregate globals.Aggregate) error {
 	n.maybeAcquireLock(tx, aggregate.Ticker)
 
 	barLength, err := getBarLength(aggregate)

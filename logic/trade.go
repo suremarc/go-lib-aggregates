@@ -34,7 +34,7 @@ func ProcessTrade[Txn any, Trade Aggregable](ctx context.Context, store db.DB[Tx
 	newAggregate := logic(aggregate, trade)
 	updated = newAggregate != aggregate
 
-	if err := store.Insert(tx, newAggregate); err != nil {
+	if err := store.Upsert(tx, newAggregate); err != nil {
 		return agg, false, fmt.Errorf("set: %w", err)
 	}
 
