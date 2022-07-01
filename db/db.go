@@ -21,9 +21,8 @@ const (
 // Any implementation of this interface MUST roll back the transaction automatically if any
 // error occurs during one of the operations.
 type DB[Tx any] interface {
-	// NewTx creates a fresh transaction with no data currently protected by it.
-	// Any operations (Get, Upsert, Delete) called with this transaction obtain exclusive access to the row
-	// accessed.
+	// NewTx creates a fresh transaction with no operations associated with it.
+	// Semantically, every operation in the transaction is guaranteed exclusive access to all rows it touches.
 	// If any of these operations fail, the transaction must automatically be rolled back.
 	// If no error occurs, Commit MUST be called, otherwise the implementation is not guaranteed to avoid leaks.
 	NewTx(context.Context) (*Tx, error)
