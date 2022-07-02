@@ -12,7 +12,6 @@ import (
 	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/suremarc/go-lib-aggregates/db"
 	"github.com/suremarc/go-lib-aggregates/logic"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
@@ -33,7 +32,7 @@ func getEnv(name, defaultVal string) string {
 func BenchmarkNativeDB(b *testing.B) {
 	n := db.NewNativeDB()
 
-	benchmarkDB[db.Tx](b, n, 1)
+	benchmarkDB[db.Tx](b, n, true)
 }
 
 func BenchmarkRedis(b *testing.B) {
@@ -60,22 +59,22 @@ func benchmarkRedisProtocol(b *testing.B, opts *redis.Options) {
 	require.NoError(b, client.FlushAll(context.Background()).Err())
 
 	store := db.NewRedis(client)
-	benchmarkDB[db.RedisTx](b, store, 4)
+	benchmarkDB[db.RedisTx](b, store, true)
 }
 
 func BenchmarkSQLiteInMemory(b *testing.B) {
-	benchmarkSQL(b, "sqlite", "file::memory:?cache=shared", 1)
+	benchmarkSQL(b, "sqlite", "file::memory:?cache=shared", false)
 }
 
 func BenchmarkSQLiteOnDisk(b *testing.B) {
-	benchmarkSQL(b, "sqlite", "data.db", 1)
+	benchmarkSQL(b, "sqlite", "data.db", false)
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable&user=postgres&password=postgres"), 4)
+	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable&user=postgres&password=postgres"), true)
 }
 
-func benchmarkSQL(b *testing.B, driver, dataSourceName string, concurrency int) {
+func benchmarkSQL(b *testing.B, driver, dataSourceName string, parallelism bool) {
 	sqlDB, err := sql.Open(string(driver), dataSourceName)
 	require.NoError(b, err)
 
@@ -85,10 +84,10 @@ func benchmarkSQL(b *testing.B, driver, dataSourceName string, concurrency int) 
 	store, err := db.NewSQL(sqlDB)
 	require.NoError(b, err)
 
-	benchmarkDB[sql.Tx](b, store, concurrency)
+	benchmarkDB[sql.Tx](b, store, parallelism)
 }
 
-func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
+func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], parallel bool) {
 	tradesChan := make(chan stocks.Trade, 1000)
 	go func() {
 		defer close(tradesChan)
@@ -125,18 +124,20 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
 	ctx := context.Background()
 	b.ResetTimer()
 
-	var eg errgroup.Group
-	for i := 0; i < concurrency; i++ {
-		eg.Go(func() error {
-			for trade := range tradesChan {
+	if parallel {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				trade := <-tradesChan
 				if _, _, err := logic.ProcessTrade(ctx, store, logic.StocksLogic, &trade, db.BarLengthMinute); err != nil {
-					return err
+					b.Error(err)
 				}
 			}
-
-			return nil
 		})
+	} else {
+		for trade := range tradesChan {
+			if _, _, err := logic.ProcessTrade(ctx, store, logic.StocksLogic, &trade, db.BarLengthMinute); err != nil {
+				b.Error(err)
+			}
+		}
 	}
-
-	require.NoError(b, eg.Wait())
 }
