@@ -21,6 +21,15 @@ import (
 	_ "github.com/lib/pq"
 )
 
+func getEnv(name, defaultVal string) string {
+	result, ok := os.LookupEnv(name)
+	if !ok {
+		return defaultVal
+	}
+
+	return result
+}
+
 func BenchmarkNativeDB(b *testing.B) {
 	n := db.NewNativeDB()
 
@@ -29,7 +38,7 @@ func BenchmarkNativeDB(b *testing.B) {
 
 func BenchmarkRedis(b *testing.B) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getEnv("REDIS_URL", "localhost:6379"),
 	})
 
 	store := db.NewRedis(client)
@@ -45,7 +54,7 @@ func BenchmarkSQLiteOnDisk(b *testing.B) {
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, "postgres", "postgresql://localhost?sslmode=disable", 4)
+	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable"), 4)
 }
 
 func benchmarkSQL(b *testing.B, driver, dataSourceName string, concurrency int) {
