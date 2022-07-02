@@ -54,7 +54,7 @@ func BenchmarkSQLiteOnDisk(b *testing.B) {
 }
 
 func BenchmarkPostgresQL(b *testing.B) {
-	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable"), 4)
+	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable&user=postgres&password=postgres"), 4)
 }
 
 func benchmarkSQL(b *testing.B, driver, dataSourceName string, concurrency int) {
