@@ -8,6 +8,24 @@ services:
     command: redis-server --loglevel warning
     volumes:
       - redis:/data
+  keydb:
+    image: eqalpha/keydb
+    restart: always
+    ports:
+      - '6380:6380'
+    command: keydb-server --port 6380 --loglevel warning
+    volumes:
+      - keydb:/data
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ulimits:
+      memlock: -1
+    restart: always
+    ports:
+      - '6381:6381'
+    command: dragonfly --port 6381
+    volumes:
+      - dragonfly:/data
   postgres:
     image: postgres:14.4
     restart: always
@@ -20,6 +38,10 @@ services:
       - postgres:/var/lib/postgresql/data
 volumes:
   redis:
+    driver: local
+  keydb:
+    driver: local
+  dragonfly:
     driver: local
   postgres:
     driver: local

@@ -33,13 +33,31 @@ func getEnv(name, defaultVal string) string {
 func BenchmarkNativeDB(b *testing.B) {
 	n := db.NewNativeDB()
 
-	benchmarkDB[db.Tx](b, n, 4)
+	benchmarkDB[db.Tx](b, n, 1)
 }
 
 func BenchmarkRedis(b *testing.B) {
-	client := redis.NewClient(&redis.Options{
+	benchmarkRedisProtocol(b, &redis.Options{
 		Addr: getEnv("REDIS_URL", "localhost:6379"),
 	})
+}
+
+func BenchmarkKeyDB(b *testing.B) {
+	benchmarkRedisProtocol(b, &redis.Options{
+		Addr: getEnv("KEYDB_URL", "localhost:6380"),
+	})
+}
+
+func BenchmarkDragonfly(b *testing.B) {
+	benchmarkRedisProtocol(b, &redis.Options{
+		Addr: getEnv("DRAGONFLY_URL", "localhost:6381"),
+	})
+}
+
+func benchmarkRedisProtocol(b *testing.B, opts *redis.Options) {
+	client := redis.NewClient(opts)
+
+	require.NoError(b, client.FlushAll(context.Background()).Err())
 
 	store := db.NewRedis(client)
 	benchmarkDB[db.RedisTx](b, store, 4)
@@ -105,6 +123,7 @@ func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], concurrency int) {
 	}()
 
 	ctx := context.Background()
+	b.ResetTimer()
 
 	var eg errgroup.Group
 	for i := 0; i < concurrency; i++ {
