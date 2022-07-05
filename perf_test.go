@@ -74,7 +74,7 @@ func BenchmarkPostgresQL(b *testing.B) {
 	benchmarkSQL(b, "postgres", getEnv("POSTGRES_URL", "postgresql://localhost?sslmode=disable&user=postgres&password=postgres"), true)
 }
 
-func benchmarkSQL(b *testing.B, driver, dataSourceName string, parallelism bool) {
+func benchmarkSQL(b *testing.B, driver, dataSourceName string, parallel bool) {
 	sqlDB, err := sql.Open(string(driver), dataSourceName)
 	require.NoError(b, err)
 
@@ -84,7 +84,7 @@ func benchmarkSQL(b *testing.B, driver, dataSourceName string, parallelism bool)
 	store, err := db.NewSQL(sqlDB)
 	require.NoError(b, err)
 
-	benchmarkDB[sql.Tx](b, store, parallelism)
+	benchmarkDB[sql.Tx](b, store, parallel)
 }
 
 func benchmarkDB[Tx any](b *testing.B, store db.DB[Tx], parallel bool) {
