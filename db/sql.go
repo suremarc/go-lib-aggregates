@@ -85,6 +85,7 @@ func (s *SQL) Get(tx *sql.Tx, ticker string, timestamp ptime.INanoseconds, barLe
 
 			return globals.Aggregate{
 				Ticker:         ticker,
+				Timestamp:      ts,
 				StartTimestamp: ts,
 				EndTimestamp:   ts + ptime.IMillisecondsFromDuration(duration),
 			}, nil

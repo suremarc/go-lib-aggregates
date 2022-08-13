@@ -23,7 +23,6 @@ import (
 )
 
 func main() {
-	logrus.SetLevel(logrus.TraceLevel)
 	store := db.NewNativeDB(false)
 
 	t, ctx := tomb.WithContext(context.Background())
@@ -46,9 +45,6 @@ func main() {
 					// fail open here
 					logrus.WithError(err).Error("process trade")
 				}
-
-				// logrus.Tracef("%v", trade)
-				// logrus.Tracef("%v %v", agg, updated)
 			}
 		}
 	})
@@ -65,6 +61,10 @@ func main() {
 
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
+
+	if _, err := fmt.Fprintln(bw, (*globals.Aggregate)(nil).CSVHeader()); err != nil {
+		logrus.WithError(err).Fatal("write csv header")
+	}
 
 	store.Range(func(a globals.Aggregate) bool {
 		if a.Open == 0 || a.High == 0 || a.Low == 0 || a.Close == 0 || a.Volume == 0 {

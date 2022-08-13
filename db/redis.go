@@ -49,6 +49,7 @@ func (r *Redis) Get(tx *RedisTx, ticker string, timestamp ptime.INanoseconds, ba
 		ts := snapTimestamp(timestamp)
 		defaultAgg := globals.Aggregate{
 			Ticker:         ticker,
+			Timestamp:      ts,
 			StartTimestamp: ts,
 			EndTimestamp:   ts + ptime.IMillisecondsFromDuration(duration),
 		}

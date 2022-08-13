@@ -62,6 +62,7 @@ func (n *NativeDB) Get(tx *Tx, ticker string, timestamp ptime.INanoseconds, barL
 
 	val, _ := n.data.LoadOrStore(index, globals.Aggregate{
 		Ticker:         index.ticker,
+		Timestamp:      index.timestamp,
 		StartTimestamp: index.timestamp,
 		EndTimestamp:   index.timestamp + ptime.IMillisecondsFromDuration(duration),
 	})

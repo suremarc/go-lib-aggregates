@@ -26,7 +26,7 @@ type index struct {
 func (a *aggregateQueue) enqueue(aggregate globals.Aggregate, barLength db.BarLength) {
 	a.unpublished.Store(index{
 		ticker:    aggregate.Ticker,
-		timestamp: aggregate.StartTimestamp,
+		timestamp: aggregate.Timestamp,
 		barLength: barLength,
 	}, aggregate)
 }
