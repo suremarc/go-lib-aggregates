@@ -16,9 +16,9 @@ const (
 )
 
 // DB stores aggregates and exposes composable primitives that can be called concurrently.
-// Tx denotes a transaction. Any data accessed by Tx is protected until DB.Commit is called
-// on the transaction.
-// Any implementation of this interface MUST roll back the transaction automatically if any
+// Tx denotes a transaction. Any two transactions must be completely read/write isolated
+// from one another until DB.Commit is called on the transaction.
+// Any implementation of this interface MUST roll back the transaction *automatically* if any
 // error occurs during one of the operations.
 type DB[Tx any] interface {
 	// NewTx creates a fresh transaction with no operations associated with it.
@@ -37,6 +37,7 @@ type DB[Tx any] interface {
 	Delete(tx *Tx, ticker string, timestamp ptime.INanoseconds, barLength BarLength) error
 
 	// Commit commits the transaction to the database.
-	// If the transaction cannot be committed for some reason, Commit returns the error.
+	// If the transaction cannot be committed for some reason, it is automatically rolled back,
+	// and Commit returns the error.
 	Commit(tx *Tx) error
 }

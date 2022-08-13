@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/polygon-io/go-lib-models/v2/currencies"
+	polygonws "github.com/polygon-io/client-go/websocket"
 	"github.com/polygon-io/go-lib-models/v2/globals"
 	"github.com/polygon-io/go-lib-models/v2/stocks"
 	"github.com/robfig/cron/v3"
@@ -25,13 +25,22 @@ func main() {
 
 	t, ctx := tomb.WithContext(context.Background())
 
-	trades := make(chan websocketTrade, 1000)
+	client, err := polygonws.New(polygonws.Config{
+		APIKey:  os.Getenv("API_KEY"),
+		Feed:    polygonws.RealTime,
+		Market:  polygonws.Stocks,
+		RawData: true,
+	})
+	if err != nil {
+		logrus.WithError(err).Fatal("initialize ws client")
+	}
 
-	t.Go(func() error { return parseLoop(ctx, "wss://socket.polygon.io/stocks", "T.*", trades) })
+	trades := make(chan *stocks.Trade, 1000)
+	t.Go(func() error { return consumerLoop(ctx, client, stocksTranslator, trades, polygonws.StocksTrades, "*") })
 
 	for i := 0; i < 8; i++ {
 		t.Go(func() error {
-			return stocksWorkerLoop(ctx, store, &publishQueue, trades)
+			return dbLoop(ctx, store, logic.StocksLogic, trades, &publishQueue)
 		})
 	}
 
@@ -64,36 +73,41 @@ func main() {
 	}
 }
 
-type websocketTrade struct {
-	EventType      string  `json:"ev"`
-	Symbol         string  `json:"sym"`
-	ID             string  `json:"i,omitempty"`
-	Exchange       int     `json:"x,omitempty"`
-	Price          float64 `json:"p,omitempty"`
-	Size           int     `json:"s,omitempty"`
-	Conditions     []int32 `json:"c,omitempty"`
-	Timestamp      int     `json:"t,omitempty"`
-	SequenceNumber int64   `json:"q,omitempty"`
-	Tape           int     `json:"z,omitempty"`
+type AggregableUnmarshaler interface {
+	logic.Aggregable
+	json.Unmarshaler
 }
 
-func (w *websocketTrade) toStocksTrade() *stocks.Trade {
-	return &stocks.Trade{
-		Base: stocks.Base{
-			Ticker:         w.Symbol,
-			Timestamp:      int64(w.Timestamp * 1_000_000),
-			SequenceNumber: w.SequenceNumber,
-		},
-		ID:         w.ID,
-		Exchange:   int32(w.Exchange),
-		Price:      w.Price,
-		Size_:      uint32(w.Size),
-		Conditions: w.Conditions,
-		Tape:       int32(w.Tape),
+func consumerLoop[Trade any, PtrTrade interface {
+	*Trade
+	AggregableUnmarshaler
+}](ctx context.Context, c *polygonws.Client, t jsonTranslator[PtrTrade], output chan<- PtrTrade, topic polygonws.Topic, subscriptions ...string) error {
+	if err := c.Connect(); err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+
+	if err := c.Subscribe(topic, subscriptions...); err != nil {
+		return fmt.Errorf("subscribe: %w", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case output, ok := <-c.Output():
+			if !ok {
+				return nil
+			}
+
+			trade := PtrTrade(new(Trade))
+			if err := trade.UnmarshalJSON([]byte(output.(json.RawMessage))); err != nil {
+				return fmt.Errorf("unmarshal trade: %w", err)
+			}
+		}
 	}
 }
 
-func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue *aggregateQueue, input <-chan currencies.Trade) error {
+func dbLoop[Trade logic.Aggregable](ctx context.Context, store *db.NativeDB, updateLogic logic.UpdateLogic[Trade], input <-chan Trade, publishQueue *aggregateQueue) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -102,7 +116,7 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue 
 			ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
 			defer cancel()
 			// Unfortunately, Go will not infer that db.Txn is our type parameter, so we have to be explicit.
-			aggregate, updated, err := logic.ProcessTrade[db.Tx](ctx, store, logic.CurrenciesLogic, &trade, barLength)
+			aggregate, updated, err := logic.ProcessTrade[db.Tx](ctx, store, updateLogic, trade, barLength)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't process trade")
 				continue
@@ -111,69 +125,6 @@ func currenciesWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue 
 			if updated {
 				publishQueue.enqueue(aggregate, barLength)
 			}
-		}
-	}
-}
-
-func stocksWorkerLoop(ctx context.Context, store *db.NativeDB, publishQueue *aggregateQueue, input <-chan websocketTrade) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case trade := <-input:
-			ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
-			defer cancel()
-			// Same as above, we have to be explicit with our type parameter.
-			aggregate, updated, err := logic.ProcessTrade[db.Tx](ctx, store, logic.StocksLogic, trade.toStocksTrade(), barLength)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't process trade")
-				continue
-			}
-
-			if updated {
-				publishQueue.enqueue(aggregate, barLength)
-			}
-		}
-	}
-}
-
-func writeAndRead(c *websocket.Conn, msg string) error {
-	_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
-	_, response, err := c.ReadMessage()
-	if err != nil {
-		return err
-	}
-	logrus.Info(string(response))
-
-	return nil
-}
-
-func parseLoop[Trade any](ctx context.Context, url, subscribe string, output chan<- Trade) error {
-	c, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
-	_, msg, err := c.ReadMessage()
-	if err != nil {
-		return err
-	}
-	logrus.Info(string(msg))
-
-	writeAndRead(c, fmt.Sprintf(`{"action":"auth","params":"%s"}`, os.Getenv("API_KEY")))
-	writeAndRead(c, fmt.Sprintf(`{"action":"subscribe","params":"%s"}`, subscribe))
-
-	for {
-		var trades []Trade
-		if err := c.ReadJSON(&trades); err != nil {
-			return err
-		}
-
-		// logrus.Info(trades)
-
-		for _, trade := range trades {
-			output <- trade
 		}
 	}
 }
