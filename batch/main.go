@@ -23,7 +23,8 @@ import (
 )
 
 func main() {
-	store := db.NewNativeDB()
+	logrus.SetLevel(logrus.TraceLevel)
+	store := db.NewNativeDB(false)
 
 	t, ctx := tomb.WithContext(context.Background())
 
@@ -40,10 +41,14 @@ func main() {
 					return nil
 				}
 
-				if _, _, err := logic.ProcessTrade[db.Tx](ctx, store, logic.StocksLogic, trade, db.BarLengthMinute); err != nil {
+				_, _, err := logic.ProcessTrade[db.Tx](ctx, store, logic.StocksLogic, trade, db.BarLengthMinute)
+				if err != nil {
 					// fail open here
 					logrus.WithError(err).Error("process trade")
 				}
+
+				// logrus.Tracef("%v", trade)
+				// logrus.Tracef("%v %v", agg, updated)
 			}
 		}
 	})
@@ -62,6 +67,11 @@ func main() {
 	defer bw.Flush()
 
 	store.Range(func(a globals.Aggregate) bool {
+		if a.Open == 0 || a.High == 0 || a.Low == 0 || a.Close == 0 || a.Volume == 0 {
+			return true
+		}
+
+		a.Timestamp = a.StartTimestamp
 		buf, err := a.MarshalCSV()
 		if err != nil {
 			logrus.WithError(err).Fatal("marshal csv")

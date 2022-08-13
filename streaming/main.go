@@ -20,7 +20,7 @@ import (
 const barLength = db.BarLengthMinute
 
 func main() {
-	store := db.NewNativeDB()
+	store := db.NewNativeDB(true)
 	var publishQueue aggregateQueue
 
 	t, ctx := tomb.WithContext(context.Background())

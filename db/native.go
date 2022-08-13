@@ -26,22 +26,22 @@ type NativeDB struct {
 
 var _ DB[Tx] = &NativeDB{}
 
-func NewNativeDB() *NativeDB {
-	n := &NativeDB{
-		ttl: map[BarLength]time.Duration{
+func NewNativeDB(ttl bool) *NativeDB {
+	n := &NativeDB{}
+	if ttl {
+		n.ttl = map[BarLength]time.Duration{
 			BarLengthSecond: time.Minute * 15,
 			BarLengthMinute: time.Minute * 15,
 			BarLengthDay:    time.Hour * 24,
-		},
-		flushTicker: time.NewTicker(time.Minute * 15),
-	}
-
-	go func() {
-		// TODO: add context cancellation
-		for range n.flushTicker.C {
-			n.Flush()
 		}
-	}()
+		n.flushTicker = time.NewTicker(time.Minute * 15)
+		go func() {
+			// TODO: add context cancellation
+			for range n.flushTicker.C {
+				n.Flush()
+			}
+		}()
+	}
 
 	return n
 }

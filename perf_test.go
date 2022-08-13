@@ -30,7 +30,7 @@ func getEnv(name, defaultVal string) string {
 }
 
 func BenchmarkNativeDB(b *testing.B) {
-	n := db.NewNativeDB()
+	n := db.NewNativeDB(false)
 
 	benchmarkDB[db.Tx](b, n, true)
 }
